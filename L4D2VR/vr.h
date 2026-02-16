@@ -11,7 +11,7 @@ class IDirect3DSurface9;
 class ITexture;
 
 
-struct TrackedDevicePoseData 
+struct TrackedDevicePoseData
 {
 	std::string TrackedDeviceName;
 	Vector TrackedDevicePos;
@@ -20,20 +20,23 @@ struct TrackedDevicePoseData
 	QAngle TrackedDeviceAngVel;
 };
 
-struct SharedTextureHolder 
+struct SharedTextureHolder
 {
 	vr::VRVulkanTextureData_t m_VulkanData;
 	vr::Texture_t m_VRTexture;
 };
 
+class CBaseEntity; // Forward declaration for data access
+class IHandleEntity; // Forward declaration for tracing
+
 class VR
 {
 public:
-	Game *m_Game = nullptr;
+	Game* m_Game = nullptr;
 
-	vr::IVRSystem *m_System = nullptr;
-	vr::IVRInput *m_Input = nullptr;
-	vr::IVROverlay *m_Overlay = nullptr;
+	vr::IVRSystem* m_System = nullptr;
+	vr::IVRInput* m_Input = nullptr;
+	vr::IVROverlay* m_Overlay = nullptr;
 
 	vr::VROverlayHandle_t m_MainMenuHandle;
 	//vr::VROverlayHandle_t m_HUDHandle;
@@ -49,6 +52,19 @@ public:
 	uint32_t m_RenderWindow;
 	float m_Aspect;
 	float m_Fov;
+
+	// Room-Scale Variables
+	Vector m_PrevRoomScalePos = { 0, 0, 0 }; // The raw HMD X/Y from the previous frame
+	bool m_RoomScaleReset = true;            // Flag to force a reset (e.g. after loading/death)
+
+	// Constants
+	const float m_StepHeight = 18.0f;       // Standard Source Engine step height
+	const float m_PlayerWidth = 32.0f;      // Chell's width (hull size 16x16)
+	const float m_PlayerHeight = 72.0f;     // Chell's height
+
+	// Room-Scale Functions
+	void ResolveRoomScaleMovement(CBaseEntity* pPlayer, IHandleEntity* pTraceEntity);
+	Vector ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector vecDelta, Vector vecMins, Vector vecMaxs);
 
 	vr::VRTextureBounds_t m_TextureBounds[2];
 	vr::TrackedDevicePose_t m_Poses[vr::k_unMaxTrackedDeviceCount];
@@ -90,19 +106,21 @@ public:
 
 	float m_HeightOffset = 0.0;
 	bool m_RoomscaleActive = false;
+	bool m_RoomScaleInitialized = false;
+	bool m_ShouldShutdownThread = false;
 
-	Vector m_LeftControllerPosAbs;											
+	Vector m_LeftControllerPosAbs;
 	QAngle m_LeftControllerAngAbs;
-	Vector m_RightControllerPosRel;											
+	Vector m_RightControllerPosRel;
 	QAngle m_RightControllerAngAbs;
 
 	Vector m_ViewmodelPosOffset;
 	QAngle m_ViewmodelAngOffset;
 
 	Vector m_ViewmodelPosCustomOffset; // Custom (from config) viewmodel position offset applied on top of hardcoded ones
-    QAngle m_ViewmodelAngCustomOffset; // Custom (from config) viewmodel angle offset applied on top of hardcoded ones
+	QAngle m_ViewmodelAngCustomOffset; // Custom (from config) viewmodel angle offset applied on top of hardcoded ones
 
-	float m_Ipd;																	
+	float m_Ipd;
 	float m_EyeZ;
 
 	Vector m_IntendedPositionOffset = { 0,0,0 };
@@ -116,15 +134,15 @@ public:
 		Texture_Blank
 	};
 
-	ITexture *m_LeftEyeTexture;
-	ITexture *m_RightEyeTexture;
-	ITexture *m_HUDTexture;
-	ITexture *m_BlankTexture = nullptr;
+	ITexture* m_LeftEyeTexture;
+	ITexture* m_RightEyeTexture;
+	ITexture* m_HUDTexture;
+	ITexture* m_BlankTexture = nullptr;
 
-	IDirect3DSurface9 *m_D9LeftEyeSurface;
-	IDirect3DSurface9 *m_D9RightEyeSurface;
-	IDirect3DSurface9 *m_D9HUDSurface;
-	IDirect3DSurface9 *m_D9BlankSurface;
+	IDirect3DSurface9* m_D9LeftEyeSurface;
+	IDirect3DSurface9* m_D9RightEyeSurface;
+	IDirect3DSurface9* m_D9HUDSurface;
+	IDirect3DSurface9* m_D9BlankSurface;
 
 	SharedTextureHolder m_VKLeftEye;
 	SharedTextureHolder m_VKRightEye;
@@ -168,7 +186,7 @@ public:
 	vr::VRActionHandle_t m_MenuDown;
 	vr::VRActionHandle_t m_MenuLeft;
 	vr::VRActionHandle_t m_MenuRight;
-	vr::VRActionHandle_t m_Spray; 
+	vr::VRActionHandle_t m_Spray;
 	vr::VRActionHandle_t m_Scoreboard;
 	vr::VRActionHandle_t m_ShowHUD;
 	vr::VRActionHandle_t m_Pause;
@@ -178,7 +196,7 @@ public:
 	TrackedDevicePoseData m_RightControllerPose;
 
 	bool m_ApplyPortalRotationOffset = false;
-	QAngle m_PortalRotationOffset = {0, 0, 0};
+	QAngle m_PortalRotationOffset = { 0, 0, 0 };
 	QAngle m_RotationOffset = { 0, 0, 0 };
 	bool m_OverrideEyeAngles = false;
 	std::chrono::steady_clock::time_point m_PrevFrameTime;
@@ -196,9 +214,9 @@ public:
 	int m_AimMode = 2;
 
 	VR() {};
-	VR(Game *game);
-	int SetActionManifest(const char *fileName);
-	void InstallApplicationManifest(const char *fileName);
+	VR(Game* game);
+	int SetActionManifest(const char* fileName);
+	void InstallApplicationManifest(const char* fileName);
 	void Update();
 	void SetScreenSizeOverride(bool bState);
 	void CreateVRTextures();
@@ -209,13 +227,13 @@ public:
 	void GetViewParameters();
 	void ProcessMenuInput();
 	void ProcessInput();
-	VMatrix VMatrixFromHmdMatrix(const vr::HmdMatrix34_t &hmdMat);
-	vr::HmdMatrix34_t VMatrixToHmdMatrix(const VMatrix &vMat);
+	VMatrix VMatrixFromHmdMatrix(const vr::HmdMatrix34_t& hmdMat);
+	vr::HmdMatrix34_t VMatrixToHmdMatrix(const VMatrix& vMat);
 	vr::HmdMatrix34_t GetControllerTipMatrix(vr::ETrackedControllerRole controllerRole);
 	bool CheckOverlayIntersectionForController(vr::VROverlayHandle_t overlayHandle, vr::ETrackedControllerRole controllerRole);
 	QAngle GetRightControllerAbsAngle();
 	QAngle& GetRightControllerAbsAngleConst();
-	Vector GetRightControllerAbsPos(Vector eyePosition = {0, 0, 0});
+	Vector GetRightControllerAbsPos(Vector eyePosition = { 0, 0, 0 });
 	Vector GetRecommendedViewmodelAbsPos(Vector eyePosition);
 	QAngle GetRecommendedViewmodelAbsAngle();
 	void UpdateHMDAngles();
@@ -224,10 +242,10 @@ public:
 	Vector GetViewOrigin(Vector setupOrigin);
 	Vector GetViewOriginLeft(Vector setupOrigin);
 	Vector GetViewOriginRight(Vector setupOrigin);
-	bool PressedDigitalAction(vr::VRActionHandle_t &actionHandle, bool checkIfActionChanged = false);
-	bool GetAnalogActionData(vr::VRActionHandle_t &actionHandle, vr::InputAnalogActionData_t &analogDataOut);
+	bool PressedDigitalAction(vr::VRActionHandle_t& actionHandle, bool checkIfActionChanged = false);
+	bool GetAnalogActionData(vr::VRActionHandle_t& actionHandle, vr::InputAnalogActionData_t& analogDataOut);
 	void ResetPosition();
-	void GetPoseData(vr::TrackedDevicePose_t &poseRaw, TrackedDevicePoseData &poseOut);
+	void GetPoseData(vr::TrackedDevicePose_t& poseRaw, TrackedDevicePoseData& poseOut);
 	void ParseConfigFile();
 	void WaitForConfigUpdate();
 	Vector Trace(uint32_t* localPlayer);
