@@ -7,7 +7,7 @@
 #include "offsets.h"
 #include <iostream>
 
-Hooks::Hooks(Game *game)
+Hooks::Hooks(Game* game)
 {
 	if (MH_Initialize() != MH_OK)
 	{
@@ -126,7 +126,7 @@ int Hooks::initSourceHooks()
 
 	LPVOID Weapon_ShootPositionAddr = (LPVOID)(m_Game->m_Offsets->Weapon_ShootPosition.address);
 	hkWeapon_ShootPosition.createHook(Weapon_ShootPositionAddr, &dWeapon_ShootPosition);
-	
+
 	LPVOID TraceFirePortalAddr = (LPVOID)(m_Game->m_Offsets->TraceFirePortalServer.address);
 	hkTraceFirePortal.createHook(TraceFirePortalAddr, &dTraceFirePortal);
 
@@ -134,7 +134,7 @@ int Hooks::initSourceHooks()
 
 	LPVOID DrawSelfAddr = (LPVOID)(m_Game->m_Offsets->DrawSelf.address);
 	hkDrawSelf.createHook(DrawSelfAddr, &dDrawSelf);
-	
+
 	LPVOID ClipTransformAddr = (LPVOID)(m_Game->m_Offsets->ClipTransform.address);
 	hkClipTransform.createHook(ClipTransformAddr, &dClipTransform);
 
@@ -160,7 +160,7 @@ int Hooks::initSourceHooks()
 	hkGetDefaultFOV.createHook((LPVOID)(m_Game->m_Offsets->GetDefaultFOV.address), &dGetDefaultFOV);
 	hkGetFOV.createHook((LPVOID)(m_Game->m_Offsets->GetFOV.address), &dGetFOV);
 	hkGetViewModelFOV.createHook((LPVOID)(m_Game->m_Offsets->GetViewModelFOV.address), &dGetViewModelFOV);
-	
+
 	// Laser Pointer
 	GetPortalPlayer = (tGetPortalPlayer)m_Game->m_Offsets->GetPortalPlayer.address;
 	CreatePingPointer = (tCreatePingPointer)m_Game->m_Offsets->CreatePingPointer.address;
@@ -174,7 +174,7 @@ int Hooks::initSourceHooks()
 	GetOwner = (tGetOwner)m_Game->m_Offsets->GetOwner.address;
 	GetFullScreenTexture = (tGetFullScreenTexture)m_Game->m_Offsets->GetFullScreenTexture.address;
 	return 1;
-} 
+}
 
 bool __fastcall Hooks::dCHudCrosshair_ShouldDraw(void* ecx, void* edx) {
 	bool shouldDraw = hkCHudCrosshair_ShouldDraw.fOriginal(ecx);
@@ -197,9 +197,9 @@ void __fastcall Hooks::dSetDrawOnlyForSplitScreenUser(void* ecx, void* edx, int 
 	hkSetDrawOnlyForSplitScreenUser.fOriginal(ecx, -1);
 }
 
-ITexture *__fastcall Hooks::dGetFullScreenTexture()
+ITexture* __fastcall Hooks::dGetFullScreenTexture()
 {
-	ITexture *result = hkGetFullScreenTexture.fOriginal();
+	ITexture* result = hkGetFullScreenTexture.fOriginal();
 	return result;
 }
 
@@ -209,7 +209,7 @@ ITexture* __fastcall Hooks::dGetRenderTarget(void* ecx, void* edx)
 	return result;
 }
 
-void __fastcall Hooks::dRenderView(void *ecx, void *edx, CViewSetup &setup, CViewSetup &hudViewSetup, int nClearFlags, int whatToDraw)
+void __fastcall Hooks::dRenderView(void* ecx, void* edx, CViewSetup& setup, CViewSetup& hudViewSetup, int nClearFlags, int whatToDraw)
 {
 	if (!m_VR->m_CreatedVRTextures) {
 		m_VR->CreateVRTextures();
@@ -286,7 +286,7 @@ void __fastcall Hooks::dRenderView(void *ecx, void *edx, CViewSetup &setup, CVie
 	rndrContext->SetRenderTarget(m_VR->m_LeftEyeTexture);
 	rndrContext->Release();
 	hkRenderView.fOriginal(ecx, leftEyeView, hudViewSetup, nClearFlags, whatToDraw);
-	
+
 	// Right eye CViewSetup
 	tempAngle = QAngle(setup.angles.x, setup.angles.y, setup.angles.z);
 	rightEyeView.origin = m_VR->TraceEye((uint32_t*)localPlayer, position, m_VR->GetViewOriginRight(position), tempAngle);
@@ -333,7 +333,7 @@ void __fastcall Hooks::dRenderView(void *ecx, void *edx, CViewSetup &setup, CVie
 	m_VR->m_RenderedNewFrame = true;
 }
 
-bool __fastcall Hooks::dCreateMove(void *ecx, void *edx, float flInputSampleTime, CUserCmd *cmd)
+bool __fastcall Hooks::dCreateMove(void* ecx, void* edx, float flInputSampleTime, CUserCmd* cmd)
 {
 	if (!cmd->command_number)
 		return hkCreateMove.fOriginal(ecx, flInputSampleTime, cmd);
@@ -346,7 +346,6 @@ bool __fastcall Hooks::dCreateMove(void *ecx, void *edx, float flInputSampleTime
 		if (m_VR->GetAnalogActionData(m_VR->m_ActionWalk, analogActionData)) {
 			// Run toward other guy
 			cmd->buttons &= ~(IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT);
-
 			cmd->forwardmove += analogActionData.y * MAX_LINEAR_SPEED;
 			cmd->sidemove += analogActionData.x * MAX_LINEAR_SPEED;
 
@@ -373,7 +372,7 @@ bool __fastcall Hooks::dCreateMove(void *ecx, void *edx, float flInputSampleTime
 
 		}
 
-		if (m_VR->m_RoomscaleActive)
+		if (m_VR->m_RoomscaleActive) // OLD LOGIC, INPUT BASED ROOMSCALE, DOES NOT WORK WELL, NOT ENABLED
 		{
 			// How much have we moved since last CreateMove?
 			Vector setupOriginToHMD = (m_VR->m_HmdPosRelativeRaw - m_VR->m_HmdPosRelativeRawPrev) * m_VR->m_VRScale; //m_VR->m_HmdPosRelative - m_VR->m_HmdPosRelativePrev;
@@ -403,12 +402,12 @@ bool __fastcall Hooks::dCreateMove(void *ecx, void *edx, float flInputSampleTime
 	return false;
 }
 
-void __fastcall Hooks::dEndFrame(void *ecx, void *edx)
+void __fastcall Hooks::dEndFrame(void* ecx, void* edx)
 {
 	return hkEndFrame.fOriginal(ecx);
 }
 
-void __fastcall Hooks::dCalcViewModelView(void *ecx, void *edx, const Vector &eyePosition, const QAngle &eyeAngles)
+void __fastcall Hooks::dCalcViewModelView(void* ecx, void* edx, const Vector& eyePosition, const QAngle& eyeAngles)
 {
 	Vector vecNewOrigin = eyePosition;
 	QAngle vecNewAngles = eyeAngles;
@@ -427,6 +426,16 @@ void __fastcall Hooks::dCalcViewModelView(void *ecx, void *edx, const Vector &ey
 
 float __fastcall Hooks::dProcessUsercmds(void *ecx, void *edx, edict_t *player, void *buf, int numcmds, int totalcmds, int dropped_packets, bool ignore, bool paused)
 {
+	int localIndex = m_Game->m_EngineClient->GetLocalPlayer();
+	int index = EntityIndex(ecx);
+
+	if (m_VR->m_IsVREnabled && localIndex == index) {
+		CBaseEntity* pEnt = (CBaseEntity*)ecx;
+		IHandleEntity* pHandle = (IHandleEntity*)ecx;
+
+		m_VR->ResolveRoomScaleMovement(pEnt, pHandle);
+	}
+
 	Server_BaseEntity *pPlayer = (Server_BaseEntity*)player->m_pUnk->GetBaseEntity();
 
 	int index = EntityIndex(pPlayer);
@@ -435,9 +444,9 @@ float __fastcall Hooks::dProcessUsercmds(void *ecx, void *edx, edict_t *player, 
 	return hkProcessUsercmds.fOriginal(ecx, player, buf, numcmds, totalcmds, dropped_packets, ignore, paused);
 }
 
-int Hooks::dWriteUsercmd(bf_write *buf, CUserCmd *to, CUserCmd *from)
+int Hooks::dWriteUsercmd(bf_write* buf, CUserCmd* to, CUserCmd* from)
 {
-	auto result =  hkWriteUsercmd.fOriginal(buf, to, from);
+	auto result = hkWriteUsercmd.fOriginal(buf, to, from);
 
 	// Let's write our stuff into the buffer
 	if (m_VR->m_IsVREnabled)
@@ -453,7 +462,7 @@ int Hooks::dWriteUsercmd(bf_write *buf, CUserCmd *to, CUserCmd *from)
 	return result;
 }
 
-int Hooks::dReadUsercmd(bf_read *buf, CUserCmd* move, CUserCmd* from)
+int Hooks::dReadUsercmd(bf_read* buf, CUserCmd* move, CUserCmd* from)
 {
 	auto result = hkReadUsercmd.fOriginal(buf, move, from);
 
@@ -479,7 +488,7 @@ int Hooks::dReadUsercmd(bf_read *buf, CUserCmd* move, CUserCmd* from)
 }
 
 
-void Hooks::dAdjustEngineViewport(int &x, int &y, int &width, int &height)
+void Hooks::dAdjustEngineViewport(int& x, int& y, int& width, int& height)
 {
 	width = m_VR->m_RenderWidth;
 	height = m_VR->m_RenderHeight;
@@ -487,7 +496,7 @@ void Hooks::dAdjustEngineViewport(int &x, int &y, int &width, int &height)
 	hkAdjustEngineViewport.fOriginal(x, y, width, height);
 }
 
-void Hooks::dGetViewport(void *ecx, void *edx, int &x, int &y, int &width, int &height)
+void Hooks::dGetViewport(void* ecx, void* edx, int& x, int& y, int& width, int& height)
 {
 	hkGetViewport.fOriginal(ecx, x, y, width, height);
 
@@ -495,19 +504,19 @@ void Hooks::dGetViewport(void *ecx, void *edx, int &x, int &y, int &width, int &
 	height = m_VR->m_RenderHeight;
 }
 
-int Hooks::dGetPrimaryAttackActivity(void *ecx, void *edx, void *meleeInfo)
+int Hooks::dGetPrimaryAttackActivity(void* ecx, void* edx, void* meleeInfo)
 {
 	return hkGetPrimaryAttackActivity.fOriginal(ecx, meleeInfo);
 }
 
-Vector *Hooks::dEyePosition(void *ecx, void *edx, Vector *eyePos)
+Vector* Hooks::dEyePosition(void* ecx, void* edx, Vector* eyePos)
 {
-	Vector *result = hkEyePosition.fOriginal(ecx, eyePos);
+	Vector* result = hkEyePosition.fOriginal(ecx, eyePos);
 	return result;
 }
 
 // We'll keep this for... future reference!
-void Hooks::dDrawModelExecute(void *ecx, void *edx, void *state, const ModelRenderInfo_t &info, void *pCustomBoneToWorld)
+void Hooks::dDrawModelExecute(void* ecx, void* edx, void* state, const ModelRenderInfo_t& info, void* pCustomBoneToWorld)
 {
 	if (info.pModel)
 	{
@@ -532,7 +541,7 @@ void Hooks::dDrawModelExecute(void *ecx, void *edx, void *state, const ModelRend
 	hkDrawModelExecute.fOriginal(ecx, state, info, pCustomBoneToWorld);
 }
 
-void Hooks::dPushRenderTargetAndViewport(void *ecx, void *edx, ITexture *pTexture, ITexture *pDepthTexture, int nViewX, int nViewY, int nViewW, int nViewH)
+void Hooks::dPushRenderTargetAndViewport(void* ecx, void* edx, ITexture* pTexture, ITexture* pDepthTexture, int nViewX, int nViewY, int nViewW, int nViewH)
 {
 	if (m_VR->m_CreatedVRTextures && !m_PushedHud)
 	{
@@ -540,7 +549,7 @@ void Hooks::dPushRenderTargetAndViewport(void *ecx, void *edx, ITexture *pTextur
 
 		//pTexture = m_VR->m_RightEyeTexture;
 
-		IMatRenderContext *renderContext = m_Game->m_MaterialSystem->GetRenderContext();
+		IMatRenderContext* renderContext = m_Game->m_MaterialSystem->GetRenderContext();
 		renderContext->ClearBuffers(false, true, true);
 		renderContext->Release();
 
@@ -561,7 +570,7 @@ void Hooks::dPushRenderTargetAndViewport(void *ecx, void *edx, ITexture *pTextur
 	}
 }
 
-void Hooks::dPopRenderTargetAndViewport(void *ecx, void *edx)
+void Hooks::dPopRenderTargetAndViewport(void* ecx, void* edx)
 {
 	if (!m_VR->m_CreatedVRTextures)
 		return hkPopRenderTargetAndViewport.fOriginal(ecx);
@@ -581,7 +590,7 @@ void Hooks::dPopRenderTargetAndViewport(void *ecx, void *edx)
 	hkPopRenderTargetAndViewport.fOriginal(ecx);
 }
 
-void Hooks::dVGui_Paint(void *ecx, void *edx, int mode)
+void Hooks::dVGui_Paint(void* ecx, void* edx, int mode)
 {
 	if (!m_VR->m_CreatedVRTextures || m_VR->m_Game->m_VguiSurface->IsCursorVisible())
 		return hkVgui_Paint.fOriginal(ecx, mode);
@@ -606,7 +615,7 @@ int Hooks::dIsSplitScreen()
 	return hkIsSplitScreen.fOriginal();
 }
 
-DWORD *Hooks::dPrePushRenderTarget(void *ecx, void *edx, int a2)
+DWORD* Hooks::dPrePushRenderTarget(void* ecx, void* edx, int a2)
 {
 	//std::cout << "dPrePushRenderTarget: " << m_PushHUDStep << "\n";
 
@@ -628,7 +637,7 @@ Vector* Hooks::dWeapon_ShootPosition(void* ecx, void* edx, Vector* eyePos)
 	auto vrPlayer = m_Game->m_PlayersVRInfo[index];
 
 	if (m_VR->m_IsVREnabled && localIndex == index) {
-		*result = m_VR->GetRightControllerAbsPos();	
+		*result = m_VR->GetRightControllerAbsPos();
 	}
 	else if (vrPlayer.isUsingVR)
 	{
@@ -762,7 +771,8 @@ void __cdecl Hooks::dVGui_GetHudBounds(int slot, int& x, int& y, int& w, int& h)
 		x = y = 0;
 		w = m_VR->m_RenderWidth;
 		h = m_VR->m_RenderHeight;
-	} else {
+	}
+	else {
 		hkVGui_GetHudBounds.fOriginal(slot, x, y, w, h);
 	}
 
@@ -787,7 +797,7 @@ void __cdecl Hooks::dVGUI_UpdateScreenSpaceBounds(int nNumSplits, int sx, int sy
 	hkVGUI_UpdateScreenSpaceBounds.fOriginal(nNumSplits, sx, sy, m_VR->m_RenderWidth, m_VR->m_RenderHeight);
 }
 
-void __cdecl Hooks::dVGui_GetTrueScreenSize(int &w, int &h) {
+void __cdecl Hooks::dVGui_GetTrueScreenSize(int& w, int& h) {
 	w = m_VR->m_RenderWidth;
 	h = m_VR->m_RenderHeight;
 }
