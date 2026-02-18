@@ -8,13 +8,7 @@
 # My apolocheese for the formatting changes clogging the diffs (blame visual studio) and the AI garbage code
 
 ## Current Issues:
-For roomscale movement to work, you need to be holding down the joystick in a direction. If I don’t do that, Chell doesn’t teleport until the next moment I move my joystick, no matter what I do or how I try to hook it.
-The easiest fix would be to somehow trick the game into always thinking I’m holding the joystick in a direction (without actually moving anywhere)
-
-The second issue is that I have double-movement.
-When I move my head, I move double the in-game space than I move in IRL. This is because my camera is attached to Chell's body, but my camera is moving Chell.
-The easiest fix is to lock my camera to Chell's head, only on the XY axis, such that my roomscale movement moves Chell for me.
-This ALSO has the advantage of removing the ability to look through walls! Since I have a hull trace system that prevents Chell from going into walls, you’ll simply get pushed back if you attempt to look into a wall
+You cannot walk through Portals in Roomscale. The game treats them as walls.
 
 # ![Portal 2 icon](imgs/icon.jpg "Portal 2 icon") Portal 2 VR
 ### ~~Use this mod at your own risk of getting VAC banned. Use the -insecure launch option to help protect yourself.~~
