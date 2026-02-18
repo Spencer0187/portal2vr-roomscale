@@ -73,6 +73,6 @@ Note: After building, it will attempt to copy the new d3d9.dll to your Portal 2/
 * [dxvk](https://github.com/TheIronWolfModding/dxvk/tree/vr-dx9-rel)
 * [source-sdk-2013](https://github.com/ValveSoftware/source-sdk-2013/)
 
-## Support me
+## Support the original Portal 2 VR Mod
 <a href="https://www.paypal.com/donate/?business=YL7TGWKPCC9H8&no_recurring=0&currency_code=USD"><img src="https://pics.paypal.com/00/s/MDAwNDljNmUtZWZiZS00ZTI1LWFiMTMtZTdhZmQ5NmU5ZDUx/file.PNG" alt="Donate Button" style="width:auto;height:100px;"></a>
 
