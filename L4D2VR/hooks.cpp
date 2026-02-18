@@ -238,9 +238,16 @@ void __fastcall Hooks::dRenderView(void* ecx, void* edx, CViewSetup& setup, CVie
 		float distance = sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z);
 
 		// Rudimentary portalling detection
-		if (distance > 35) {
+		if (distance > m_VR->m_PortallingDetectionDistanceThreshold) {
 			// 1. Update the rotation
 			m_VR->m_RotationOffset.y += m_VR->m_PortalRotationOffset.y;
+
+			// If enabled, the camera pitch/roll follows the direction of the portal -- might be disorienting
+			// for some people:
+			if (m_VR->m_ApplyPitchAndRollPortalRotationOffset) {
+				m_VR->m_RotationOffset.x += m_VR->m_PortalRotationOffset.x;
+				m_VR->m_RotationOffset.z += m_VR->m_PortalRotationOffset.z;
+			}
 			
 			// 2. Refresh HMD angles
 			m_VR->UpdateHMDAngles();
@@ -650,7 +657,7 @@ Vector* Hooks::dWeapon_ShootPosition(void* ecx, void* edx, Vector* eyePos)
 	int localIndex = m_Game->m_EngineClient->GetLocalPlayer();
 	int index = EntityIndex(ecx);
 
-	auto vrPlayer = m_Game->m_PlayersVRInfo[index];
+	auto& vrPlayer = m_Game->m_PlayersVRInfo[index];
 
 	if (m_VR->m_IsVREnabled && localIndex == index) {
 		*result = m_VR->GetRightControllerAbsPos();
@@ -689,7 +696,7 @@ bool __fastcall Hooks::dTraceFirePortal(void* ecx, void* edx, const Vector& vTra
 		if (owner) {
 			int index = EntityIndex(owner);
 
-			auto vrPlayer = m_Game->m_PlayersVRInfo[index];
+			auto& vrPlayer = m_Game->m_PlayersVRInfo[index];
 
 			if (m_VR->m_IsVREnabled && localIndex == index) {
 				vNewTraceStart = m_VR->GetRightControllerAbsPos();
