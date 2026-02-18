@@ -18,7 +18,7 @@
 #include <d3d9_vr.h>
 
 #ifndef MASK_PLAYERSOLID
-#define MASK_PLAYERSOLID (0x200100B)
+#define MASK_PLAYERSOLID (0x201400B)
 #endif
 
 inline float Length2D(const Vector& v) {
@@ -65,23 +65,33 @@ VR::VR(Game* game)
     float r_left = 0.0f, r_right = 0.0f, r_top = 0.0f, r_bottom = 0.0f;
     m_System->GetProjectionRaw(vr::EVREye::Eye_Right, &r_left, &r_right, &r_top, &r_bottom);
 
-    float tanHalfFov[2];
+    if (m_RenderHeight > 0) {
+        m_Aspect = (float)m_RenderWidth / (float)m_RenderHeight;
+    }
+    else {
+        m_Aspect = 1.0f;
+    }
 
-    tanHalfFov[0] = std::max({ -l_left, l_right, -r_left, r_right });
-    tanHalfFov[1] = std::max({ -l_top, l_bottom, -r_top, r_bottom });
+    float tanHalfFovH = std::max({ -l_left, l_right, -r_left, r_right });
+    float tanHalfFovV = std::max({ -l_top, l_bottom, -r_top, r_bottom });
 
-    m_TextureBounds[0].uMin = 0.5f + 0.5f * l_left / tanHalfFov[0];
-    m_TextureBounds[0].uMax = 0.5f + 0.5f * l_right / tanHalfFov[0];
-    m_TextureBounds[0].vMin = 0.5f - 0.5f * l_bottom / tanHalfFov[1];
-    m_TextureBounds[0].vMax = 0.5f - 0.5f * l_top / tanHalfFov[1];
+    // For some headsets, the driver provided texture size doesn't match the geometric aspect ratio of the lenses.
+    // In this case, we need to adjust the vertical tangent while still rendering to the recommended RT size. 
 
-    m_TextureBounds[1].uMin = 0.5f + 0.5f * r_left / tanHalfFov[0];
-    m_TextureBounds[1].uMax = 0.5f + 0.5f * r_right / tanHalfFov[0];
-    m_TextureBounds[1].vMin = 0.5f - 0.5f * r_bottom / tanHalfFov[1];
-    m_TextureBounds[1].vMax = 0.5f - 0.5f * r_top / tanHalfFov[1];
+    float idealAspect = tanHalfFovH / tanHalfFovV;
+    float adjustedTanHalfFovV = tanHalfFovH / m_Aspect;
 
-    m_Aspect = tanHalfFov[0] / tanHalfFov[1];
-    m_Fov = 2.0f * atan(tanHalfFov[0]) * 360 / (3.14159265358979323846 * 2);
+    m_Fov = 2.0f * atan(tanHalfFovH) * 360 / (3.14159265358979323846 * 2);
+
+    m_TextureBounds[0].uMin = 0.5f + 0.5f * l_left / tanHalfFovH;
+    m_TextureBounds[0].uMax = 0.5f + 0.5f * l_right / tanHalfFovH;
+    m_TextureBounds[0].vMin = 0.5f - 0.5f * l_bottom / adjustedTanHalfFovV;
+    m_TextureBounds[0].vMax = 0.5f - 0.5f * l_top / adjustedTanHalfFovV;
+
+    m_TextureBounds[1].uMin = 0.5f + 0.5f * r_left / tanHalfFovH;
+    m_TextureBounds[1].uMax = 0.5f + 0.5f * r_right / tanHalfFovH;
+    m_TextureBounds[1].vMin = 0.5f - 0.5f * r_bottom / adjustedTanHalfFovV;
+    m_TextureBounds[1].vMax = 0.5f - 0.5f * r_top / adjustedTanHalfFovV;
 
     InstallApplicationManifest("manifest.vrmanifest");
     SetActionManifest("action_manifest.json");
@@ -110,7 +120,7 @@ VR::VR(Game* game)
     const vr::HmdVector2_t mouseScaleMenu = { m_RenderWidth, m_RenderHeight };
     m_Overlay->SetOverlayCurvature(m_MainMenuHandle, 0.15f);
     m_Overlay->SetOverlayMouseScale(m_MainMenuHandle, &mouseScaleMenu);
-
+    vr::VRCompositor()->SetTrackingSpace(vr::TrackingUniverseStanding);
     UpdatePosesAndActions();
 
     m_IsInitialized = true;
@@ -457,19 +467,18 @@ void VR::GetViewParameters()
     m_EyeToHeadTransformPosRight.z = eyeToHeadRight.m[2][3];
 }
 
-bool VR::PressedDigitalAction(vr::VRActionHandle_t& actionHandle, bool checkIfActionChanged)
+bool VR::CheckDigitalActionChanged(vr::VRActionHandle_t& actionHandle, bool& state)
 {
     vr::InputDigitalActionData_t digitalActionData;
     vr::EVRInputError result = m_Input->GetDigitalActionData(actionHandle, &digitalActionData, sizeof(digitalActionData), vr::k_ulInvalidInputValueHandle);
 
     if (result == vr::VRInputError_None)
     {
-        if (checkIfActionChanged)
-            return digitalActionData.bState && digitalActionData.bChanged;
-        else
-            return digitalActionData.bState;
+        state = digitalActionData.bState;
+        return digitalActionData.bChanged;
     }
 
+    state = false;
     return false;
 }
 
@@ -560,7 +569,8 @@ void VR::ProcessMenuInput()
     {
         vr::VROverlay()->SetOverlayFlag(currentOverlay, vr::VROverlayFlags_MakeOverlaysInteractiveIfVisible, false);
 
-        if (PressedDigitalAction(m_MenuSelect, true))
+        bool state;
+        if (CheckDigitalActionChanged(m_MenuSelect, state) && state)
         {
             INPUT input{};
             input.type = INPUT_KEYBOARD;
@@ -569,7 +579,7 @@ void VR::ProcessMenuInput()
             input.ki.dwFlags = KEYEVENTF_KEYUP;
             SendInput(1, &input, sizeof(INPUT));
         }
-        if (PressedDigitalAction(m_MenuBack, true) || PressedDigitalAction(m_Pause, true))
+        if ((CheckDigitalActionChanged(m_MenuBack, state) && state) || (CheckDigitalActionChanged(m_Pause, state) && state))
         {
             INPUT input{};
             input.type = INPUT_KEYBOARD;
@@ -578,7 +588,7 @@ void VR::ProcessMenuInput()
             input.ki.dwFlags = KEYEVENTF_KEYUP;
             SendInput(1, &input, sizeof(INPUT));
         }
-        if (PressedDigitalAction(m_MenuUp, true))
+        if (CheckDigitalActionChanged(m_MenuUp, state) && state)    
         {
             INPUT input{};
             input.type = INPUT_KEYBOARD;
@@ -587,7 +597,7 @@ void VR::ProcessMenuInput()
             input.ki.dwFlags = KEYEVENTF_KEYUP;
             SendInput(1, &input, sizeof(INPUT));
         }
-        if (PressedDigitalAction(m_MenuDown, true))
+        if (CheckDigitalActionChanged(m_MenuDown, state) && state)
         {
             INPUT input{};
             input.type = INPUT_KEYBOARD;
@@ -596,7 +606,7 @@ void VR::ProcessMenuInput()
             input.ki.dwFlags = KEYEVENTF_KEYUP;
             SendInput(1, &input, sizeof(INPUT));
         }
-        if (PressedDigitalAction(m_MenuLeft, true))
+        if (CheckDigitalActionChanged(m_MenuLeft, state) && state)
         {
             INPUT input{};
             input.type = INPUT_KEYBOARD;
@@ -605,7 +615,7 @@ void VR::ProcessMenuInput()
             input.ki.dwFlags = KEYEVENTF_KEYUP;
             SendInput(1, &input, sizeof(INPUT));
         }
-        if (PressedDigitalAction(m_MenuRight, true))
+        if (CheckDigitalActionChanged(m_MenuRight, state) && state)
         {
             INPUT input{};
             input.type = INPUT_KEYBOARD;
@@ -690,80 +700,87 @@ void VR::ProcessInput()
         m_RotationOffset.y -= 360 * std::floor(m_RotationOffset.y / 360);
     }
 
-    if (PressedDigitalAction(m_ActionPrimaryAttack))
+    // Re-align camera upright after portalling
+    if (m_RotationOffset.x != 0.f || m_RotationOffset.z != 0.f)
     {
-        m_Game->ClientCmd_Unrestricted("+attack");
-    }
-    else
-    {
-        m_Game->ClientCmd_Unrestricted("-attack");
+        // Last valid yaw angle, in case we need to revert to it.
+        const float lastYaw = m_RotationOffset.y;
+
+        const QAngle targetRotation(0, lastYaw, 0);
+
+        const auto lerp = [](float a, float b, float f) -> float {
+            return a * (1.0 - f) + (b * f);
+            };
+
+        float lerpedPitch = lerp(m_RotationOffset.x, targetRotation.x, m_CameraUprightRecoverySpeed);
+        float lerpedYaw = lerp(m_RotationOffset.y, targetRotation.y, m_CameraUprightRecoverySpeed);
+        float lerpedRoll = lerp(m_RotationOffset.z, targetRotation.z, m_CameraUprightRecoverySpeed);
+
+        m_RotationOffset = QAngle(lerpedPitch, lerpedYaw, lerpedRoll);
+
+        if (abs(m_RotationOffset.x) < 0.0001)
+            m_RotationOffset.x = 0;
+        if (abs(m_RotationOffset.z) < 0.0001)
+            m_RotationOffset.z = 0;
+
+        // Just in case any calculation went awry, revert to an upright vector:
+        if (std::isnan(m_RotationOffset.x) || std::isnan(m_RotationOffset.y) || std::isnan(m_RotationOffset.z))
+        {
+            m_RotationOffset = QAngle(0.f, lastYaw, 0.f);
+        }
     }
 
-    if (PressedDigitalAction(m_ActionSecondaryAttack))
+    bool state;
+    if (CheckDigitalActionChanged(m_ActionPrimaryAttack, state))
     {
-        m_Game->ClientCmd_Unrestricted("+attack2");
-    }
-    else
-    {
-        m_Game->ClientCmd_Unrestricted("-attack2");
+        m_Game->ClientCmd_Unrestricted(state ? "+attack" : "-attack");
     }
 
-    if (PressedDigitalAction(m_ActionJump))
+    if (CheckDigitalActionChanged(m_ActionSecondaryAttack, state))
     {
-        m_Game->ClientCmd_Unrestricted("+jump");
-    }
-    else
-    {
-        m_Game->ClientCmd_Unrestricted("-jump");
+        m_Game->ClientCmd_Unrestricted(state ? "+attack2" : "-attack2");
     }
 
-    if (PressedDigitalAction(m_ActionCrouch))
+    if (CheckDigitalActionChanged(m_ActionJump, state))
     {
-        m_Game->ClientCmd_Unrestricted("+duck");
-    }
-    else
-    {
-        m_Game->ClientCmd_Unrestricted("-duck");
+        m_Game->ClientCmd_Unrestricted(state ? "+jump" : "-jump");
     }
 
-    if (PressedDigitalAction(m_ActionUse))
+    if (CheckDigitalActionChanged(m_ActionCrouch, state))
     {
-        m_Game->ClientCmd_Unrestricted("+use");
-    }
-    else
-    {
-        m_Game->ClientCmd_Unrestricted("-use");
+        m_Game->ClientCmd_Unrestricted(state ? "+duck" : "-duck");
     }
 
-    if (PressedDigitalAction(m_ActionReload))
+    if (CheckDigitalActionChanged(m_ActionUse, state))
     {
-        m_Game->ClientCmd_Unrestricted("+reload");
-    }
-    else
-    {
-        m_Game->ClientCmd_Unrestricted("-reload");
+        m_Game->ClientCmd_Unrestricted(state ? "+use" : "-use");
     }
 
-    if (PressedDigitalAction(m_ActionPrevItem, true))
+    if (CheckDigitalActionChanged(m_ActionReload, state))
+    {
+        m_Game->ClientCmd_Unrestricted(state ? "+reload" : "-reload");
+    }
+
+    if (CheckDigitalActionChanged(m_ActionPrevItem, state) && state)
     {
         m_Game->ClientCmd_Unrestricted("invprev");
     }
-    else if (PressedDigitalAction(m_ActionNextItem, true))
+    else if (CheckDigitalActionChanged(m_ActionNextItem, state) && state)
     {
         m_Game->ClientCmd_Unrestricted("invnext");
     }
 
-    if (PressedDigitalAction(m_ActionResetPosition, true))
+    if (CheckDigitalActionChanged(m_ActionResetPosition, state) && state)
     {
         ResetPosition();
     }
 
-    if (PressedDigitalAction(m_ActionFlashlight, true))
+    if (CheckDigitalActionChanged(m_ActionFlashlight, state) && state)
     {
         m_Game->ClientCmd_Unrestricted("impulse 100");
     }
 
-    if (PressedDigitalAction(m_Spray, true))
+    if (CheckDigitalActionChanged(m_Spray, state) && state)
     {
         m_Game->ClientCmd_Unrestricted("impulse 201");
     }
@@ -789,7 +806,7 @@ void VR::ProcessInput()
 
     m_RenderedHud = false;
 
-    if (PressedDigitalAction(m_Pause, true))
+    if (CheckDigitalActionChanged(m_Pause, state) && state)
     {
         m_Game->ClientCmd_Unrestricted("gameui_activate");
         RepositionOverlays();
@@ -1474,6 +1491,9 @@ static T parseConfigEntry(
         parseOrDefault("RenderWindow", m_RenderWindow, 0);
         parseXYZOrDefaultZero("ViewmodelPosCustomOffset", m_ViewmodelPosCustomOffset);
         parseXYZOrDefaultZero("ViewmodelAngCustomOffset", m_ViewmodelAngCustomOffset);
+        parseOrDefault("PortallingDetectionDistanceThreshold", m_PortallingDetectionDistanceThreshold, 35);
+        parseOrDefault("ApplyPitchAndRollPortalRotationOffset", m_ApplyPitchAndRollPortalRotationOffset, false);
+        parseOrDefault("CameraUprightRecoverySpeed", m_CameraUprightRecoverySpeed, 0.2f);
     }
 
     void VR::WaitForConfigUpdate()
@@ -1622,14 +1642,14 @@ Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector v
     float time_left = 1.0f;
     const int maxBumps = 4;
     const float stepHeight = 18.0f;
-    const float overbounce = 1.01f;  // Slight overbounce to prevent exact zeroing
+    const float overbounce = 1.00f;  // Slight overbounce to prevent exact zeroing
 
     Vector planes[5];
     int numplanes = 0;
 
     for (int bump = 0; bump < maxBumps; ++bump)
     {
-        if (time_left <= 0.001f || velocity.LengthSqr() < 0.001f)
+        if (time_left <= 0.001f)
             break;
 
         Vector end = pos + (velocity * time_left);
@@ -1712,7 +1732,7 @@ Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector v
             }
         }
 
-        if (clipped_to_zero || velocity.LengthSqr() < 0.001f)
+        if (clipped_to_zero)
             break;
 
         // Attempt step if blocked by floor-ish plane (or any upward block midair)
@@ -1767,7 +1787,6 @@ Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector v
     return pos;
 }
 
-
 void VR::ResolveRoomScaleMovement(CBaseEntity* pPlayer, IHandleEntity* pTraceEntity)
 {
     if (!m_IsVREnabled || !pPlayer) return;
@@ -1805,7 +1824,7 @@ void VR::ResolveRoomScaleMovement(CBaseEntity* pPlayer, IHandleEntity* pTraceEnt
     // 5. Apply Movement
     Vector actualMove = vecFinal - vecStart;
 
-    if (actualMove.LengthSqr() > 0.001f) 
+    if (actualMove.LengthSqr() > 0.01f) // Removing this check causes the game to go into 3dof mode???
     {
         // A. Memory Write (Server Authority)
         uintptr_t serverBase = m_Game->m_BaseServer;
@@ -1848,11 +1867,6 @@ void VR::ResolveRoomScaleMovement(CBaseEntity* pPlayer, IHandleEntity* pTraceEnt
         }
         
         // pPlayer->m_vecAbsOrigin = vecFinal; // Doesn't work
-
-        // C. Counter-Steer (Fixes Double Movement)
-        // Vector moveRaw = actualMove / m_VRScale;
-        // VectorPivotXY(moveRaw, { 0,0,0 }, -m_RotationOffset.y);
-        // m_Center = m_Center + moveRaw;
         
         // D. Re-Calculate Prev for Next Frame
         Vector newHmdLocal = hmdRaw - m_Center;
