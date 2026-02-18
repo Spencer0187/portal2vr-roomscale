@@ -30,7 +30,7 @@ struct Hook {
 
 	int createHook(LPVOID targetFunc, LPVOID detourFunc)
 	{
-		if (MH_CreateHook(targetFunc, detourFunc, reinterpret_cast<LPVOID *>(&fOriginal)) != MH_OK)
+		if (MH_CreateHook(targetFunc, detourFunc, reinterpret_cast<LPVOID*>(&fOriginal)) != MH_OK)
 		{
 			char errorString[512];
 			sprintf_s(errorString, 512, "Failed to create hook with this signature: %s", typeid(T).name());
@@ -69,26 +69,26 @@ struct Hook {
 
 
 // Source Engine functions
-typedef ITexture *(__thiscall *tGetRenderTarget)(void *thisptr);
-typedef void(__thiscall *tRenderView)(void *thisptr, CViewSetup &setup, CViewSetup &hudViewSetup, int nClearFlags, int whatToDraw);
-typedef bool(__thiscall *tCreateMove)(void *thisptr, float flInputSampleTime, CUserCmd *cmd);
-typedef void(__thiscall *tEndFrame)(PVOID);
-typedef void(__thiscall *tCalcViewModelView)(void *thisptr, const Vector &eyePosition, const QAngle &eyeAngles);
-typedef float(__thiscall *tProcessUsercmds)(void *thisptr, edict_t *player, void *buf, int numcmds, int totalcmds, int dropped_packets, bool ignore, bool paused);
-typedef int(__cdecl *tReadUsercmd)(void *buf, CUserCmd *move, CUserCmd *from);
-typedef void(__thiscall *tWriteUsercmdDeltaToBuffer)(void *thisptr, int a1, void *buf, int from, int to, bool isnewcommand);
-typedef int(__cdecl *tWriteUsercmd)(void *buf, CUserCmd *to, CUserCmd *from);
-typedef int(__cdecl *tAdjustEngineViewport)(int &x, int &y, int &width, int &height);
-typedef void(__thiscall *tViewport)(void *thisptr, int x, int y, int width, int height);
-typedef void(__thiscall *tGetViewport)(void *thisptr, int &x, int &y, int &width, int &height);
-typedef int(__thiscall *tGetPrimaryAttackActivity)(void *thisptr, void *meleeInfo);
-typedef Vector *(__thiscall *tEyePosition)(void *thisptr, Vector *eyePos);
-typedef void(__thiscall *tDrawModelExecute)(void *thisptr, void *state, const ModelRenderInfo_t &info, void *pCustomBoneToWorld);
-typedef void(__thiscall *tPushRenderTargetAndViewport)(void *thisptr, ITexture *pTexture, ITexture *pDepthTexture, int nViewX, int nViewY, int nViewW, int nViewH);
-typedef void(__thiscall *tPopRenderTargetAndViewport)(void *thisptr);
-typedef void(__thiscall *tVgui_Paint)(void *thisptr, int mode);
-typedef int(__cdecl *tIsSplitScreen)();
-typedef DWORD *(__thiscall *tPrePushRenderTarget)(void *thisptr, int a2);
+typedef ITexture* (__thiscall* tGetRenderTarget)(void* thisptr);
+typedef void(__thiscall* tRenderView)(void* thisptr, CViewSetup& setup, CViewSetup& hudViewSetup, int nClearFlags, int whatToDraw);
+typedef bool(__thiscall* tCreateMove)(void* thisptr, float flInputSampleTime, CUserCmd* cmd);
+typedef void(__thiscall* tEndFrame)(PVOID);
+typedef void(__thiscall* tCalcViewModelView)(void* thisptr, const Vector& eyePosition, const QAngle& eyeAngles);
+typedef float(__thiscall* tProcessUsercmds)(void* thisptr, edict_t* player, void* buf, int numcmds, int totalcmds, int dropped_packets, bool ignore, bool paused);
+typedef int(__cdecl* tReadUsercmd)(void* buf, CUserCmd* move, CUserCmd* from);
+typedef void(__thiscall* tWriteUsercmdDeltaToBuffer)(void* thisptr, int a1, void* buf, int from, int to, bool isnewcommand);
+typedef int(__cdecl* tWriteUsercmd)(void* buf, CUserCmd* to, CUserCmd* from);
+typedef int(__cdecl* tAdjustEngineViewport)(int& x, int& y, int& width, int& height);
+typedef void(__thiscall* tViewport)(void* thisptr, int x, int y, int width, int height);
+typedef void(__thiscall* tGetViewport)(void* thisptr, int& x, int& y, int& width, int& height);
+typedef int(__thiscall* tGetPrimaryAttackActivity)(void* thisptr, void* meleeInfo);
+typedef Vector* (__thiscall* tEyePosition)(void* thisptr, Vector* eyePos);
+typedef void(__thiscall* tDrawModelExecute)(void* thisptr, void* state, const ModelRenderInfo_t& info, void* pCustomBoneToWorld);
+typedef void(__thiscall* tPushRenderTargetAndViewport)(void* thisptr, ITexture* pTexture, ITexture* pDepthTexture, int nViewX, int nViewY, int nViewW, int nViewH);
+typedef void(__thiscall* tPopRenderTargetAndViewport)(void* thisptr);
+typedef void(__thiscall* tVgui_Paint)(void* thisptr, int mode);
+typedef int(__cdecl* tIsSplitScreen)();
+typedef DWORD* (__thiscall* tPrePushRenderTarget)(void* thisptr, int a2);
 typedef ITexture* (__thiscall* tGetFullScreenTexture)();
 
 typedef bool(__thiscall* tTraceFirePortal)(void* thisptr, const Vector& vTraceStart, const Vector& vDirection, bool bPortal2, int iPlacedBy, void* tr);
@@ -103,7 +103,7 @@ typedef void(__cdecl* tVGui_GetPanelBounds)(int slot, int& x, int& y, int& w, in
 
 // HUD
 typedef void(__cdecl* tVGUI_UpdateScreenSpaceBounds)(int nNumSplits, int sx, int sy, int sw, int sh);
-typedef void(__cdecl* tVGui_GetTrueScreenSize)(int &w, int &h);
+typedef void(__cdecl* tVGui_GetTrueScreenSize)(int& w, int& h);
 
 typedef void(__cdecl* tGetHudSize)(int& w, int& h);
 
@@ -119,7 +119,7 @@ typedef double(__thiscall* tComputeError)(void* thisptr);
 typedef bool(__thiscall* tUpdateObject)(void* thisptr, void* pPlayer, float flError, bool bIsTeleport);
 typedef bool(__thiscall* tUpdateObjectVM)(void* thisptr, void* pPlayer, float flError);
 typedef void(__thiscall* tRotateObject)(void* thisptr, void* pPlayer, float fRotAboutUp, float fRotAboutRight, bool bUseWorldUpInsteadOfPlayerUp);
-typedef QAngle&(__thiscall* tEyeAngles)(void* thisptr);
+typedef QAngle& (__thiscall* tEyeAngles)(void* thisptr);
 
 typedef void(__cdecl* tMatrixBuildPerspectiveX)(void*& dst, double flFovX, double flAspect, double flZNear, double flZFar);
 
@@ -130,23 +130,23 @@ typedef double(__cdecl* tGetViewModelFOV)(void*& thisptr);
 typedef void(__thiscall* tCreatePingPointer)(void* thisptr, Vector vecDestintaion);
 typedef void(__thiscall* tSetDrawOnlyForSplitScreenUser)(void* thisptr, int nSlot);
 typedef void(__thiscall* tClientThink)(void* thisptr);
-typedef void*(__cdecl* tGetPortalPlayer)(int index);
+typedef void* (__cdecl* tGetPortalPlayer)(int index);
 typedef int(__cdecl* tPrecacheParticleSystem)(const char* pParticleSystemName);
 typedef void(__thiscall* tPrecache)(void* thisptr);
 typedef bool(__thiscall* tCHudCrosshair_ShouldDraw)(void* thisptr);
 
-typedef void*(__cdecl* tUTIL_Portal_FirstAlongRay)(const Ray_t& ray, float& fMustBeCloserThan);
+typedef void* (__cdecl* tUTIL_Portal_FirstAlongRay)(const Ray_t& ray, float& fMustBeCloserThan);
 typedef float(__cdecl* tUTIL_IntersectRayWithPortal)(const Ray_t& ray, const void* pPortal);
 typedef void(__cdecl* tUTIL_Portal_AngleTransform)(const VMatrix& matThisToLinked, const QAngle& qSource, QAngle& qTransformed);
 typedef int(__thiscall* tEntindex)(void* thisptr);
-typedef void*(__thiscall* tGetOwner)(void* thisptr);
+typedef void* (__thiscall* tGetOwner)(void* thisptr);
 typedef void* (__thiscall* tCWeaponPortalgun_FirePortal)(void* thisptr, bool bPortal2, Vector* pVector);
 
 class Hooks
 {
 public:
-	static inline Game *m_Game;
-	static inline VR *m_VR;
+	static inline Game* m_Game;
+	static inline VR* m_VR;
 
 	static inline Hook<tGetRenderTarget> hkGetRenderTarget;
 	static inline Hook<tRenderView> hkRenderView;
@@ -189,7 +189,7 @@ public:
 	static inline Hook<tGetClipRect> hkGetClipRect;
 	static inline Hook<tGetHudSize> hkGetHudSize;
 	static inline Hook<tSetSize> hkSetSize;
-	
+
 	static inline Hook<tComputeError> hkComputeError;
 	static inline Hook<tUpdateObject> hkUpdateObject;
 	static inline Hook<tUpdateObjectVM> hkUpdateObjectVM;
@@ -197,7 +197,7 @@ public:
 	static inline Hook<tEyeAngles> hkEyeAngles;
 
 	static inline Hook<tMatrixBuildPerspectiveX> hkMatrixBuildPerspectiveX;
-	
+
 	static inline Hook<tGetDefaultFOV> hkGetDefaultFOV;
 	static inline Hook<tGetFOV> hkGetFOV;
 	static inline Hook<tGetViewModelFOV> hkGetViewModelFOV;
@@ -211,41 +211,41 @@ public:
 	//Precache
 
 	Hooks() {};
-	Hooks(Game *game);
+	Hooks(Game* game);
 
 	~Hooks();
 
 	int initSourceHooks();
 
 	// Detour functions
-	static ITexture *__fastcall dGetRenderTarget(void *ecx, void *edx);
-	static void __fastcall dRenderView(void *ecx, void *edx, CViewSetup &setup, CViewSetup &hudViewSetup, int nClearFlags, int whatToDraw);
-	static bool __fastcall dCreateMove(void *ecx, void *edx, float flInputSampleTime, CUserCmd *cmd);
-	static void __fastcall dEndFrame(void *ecx, void *edx);
-	static void __fastcall dCalcViewModelView(void *ecx, void *edx, const Vector &eyePosition, const QAngle &eyeAngles);
-	static int dServerFireTerrorBullets(int playerId, const Vector &vecOrigin, const QAngle &vecAngles, int a4, int a5, int a6, float a7);
-	static int dClientFireTerrorBullets(int playerId, const Vector &vecOrigin, const QAngle &vecAngles, int a4, int a5, int a6, float a7);
-	static float __fastcall dProcessUsercmds(void *ecx, void *edx, edict_t *player, void *buf, int numcmds, int totalcmds, int dropped_packets, bool ignore, bool paused);
-	static int dReadUsercmd(bf_read *buf, CUserCmd *move, CUserCmd *from);
-	static int dWriteUsercmd(bf_write *buf, CUserCmd *to, CUserCmd *from);
-	static void dAdjustEngineViewport(int &x, int &y, int &width, int &height);
-	static void __fastcall dViewport(void *ecx, void *edx, int x, int y, int width, int height);
-	static void __fastcall dGetViewport(void *ecx, void *edx, int &x, int &y, int &width, int &height);
-	static int __fastcall dTestMeleeSwingCollisionClient(void *ecx, void *edx, Vector const &vec);
-	static int __fastcall dTestMeleeSwingCollisionServer(void *ecx, void *edx, Vector const &vec);
-	static void __fastcall dDoMeleeSwingServer(void *ecx, void *edx);
-	static void __fastcall dStartMeleeSwingServer(void *ecx, void *edx, void *player, bool a3);
-	static int __fastcall dPrimaryAttackServer(void *ecx, void *edx);
-	static void __fastcall dItemPostFrameServer(void *ecx, void *edx);
-	static int __fastcall dGetPrimaryAttackActivity(void *ecx, void *edx, void* meleeInfo);
-	static Vector *__fastcall dEyePosition(void *ecx, void *edx, Vector *eyePos);
-	static void __fastcall dDrawModelExecute(void *ecx, void* edx, void *state, const ModelRenderInfo_t &info, void *pCustomBoneToWorld);
-	static void __fastcall dPushRenderTargetAndViewport(void *ecx, void *edx, ITexture *pTexture, ITexture *pDepthTexture, int nViewX, int nViewY, int nViewW, int nViewH);
-	static void __fastcall dPopRenderTargetAndViewport(void *ecx, void *edx);
-	static void __fastcall dVGui_Paint(void *ecx, void *edx, int mode);
+	static ITexture* __fastcall dGetRenderTarget(void* ecx, void* edx);
+	static void __fastcall dRenderView(void* ecx, void* edx, CViewSetup& setup, CViewSetup& hudViewSetup, int nClearFlags, int whatToDraw);
+	static bool __fastcall dCreateMove(void* ecx, void* edx, float flInputSampleTime, CUserCmd* cmd);
+	static void __fastcall dEndFrame(void* ecx, void* edx);
+	static void __fastcall dCalcViewModelView(void* ecx, void* edx, const Vector& eyePosition, const QAngle& eyeAngles);
+	static int dServerFireTerrorBullets(int playerId, const Vector& vecOrigin, const QAngle& vecAngles, int a4, int a5, int a6, float a7);
+	static int dClientFireTerrorBullets(int playerId, const Vector& vecOrigin, const QAngle& vecAngles, int a4, int a5, int a6, float a7);
+	static float __fastcall dProcessUsercmds(void* ecx, void* edx, edict_t* player, void* buf, int numcmds, int totalcmds, int dropped_packets, bool ignore, bool paused);
+	static int dReadUsercmd(bf_read* buf, CUserCmd* move, CUserCmd* from);
+	static int dWriteUsercmd(bf_write* buf, CUserCmd* to, CUserCmd* from);
+	static void dAdjustEngineViewport(int& x, int& y, int& width, int& height);
+	static void __fastcall dViewport(void* ecx, void* edx, int x, int y, int width, int height);
+	static void __fastcall dGetViewport(void* ecx, void* edx, int& x, int& y, int& width, int& height);
+	static int __fastcall dTestMeleeSwingCollisionClient(void* ecx, void* edx, Vector const& vec);
+	static int __fastcall dTestMeleeSwingCollisionServer(void* ecx, void* edx, Vector const& vec);
+	static void __fastcall dDoMeleeSwingServer(void* ecx, void* edx);
+	static void __fastcall dStartMeleeSwingServer(void* ecx, void* edx, void* player, bool a3);
+	static int __fastcall dPrimaryAttackServer(void* ecx, void* edx);
+	static void __fastcall dItemPostFrameServer(void* ecx, void* edx);
+	static int __fastcall dGetPrimaryAttackActivity(void* ecx, void* edx, void* meleeInfo);
+	static Vector* __fastcall dEyePosition(void* ecx, void* edx, Vector* eyePos);
+	static void __fastcall dDrawModelExecute(void* ecx, void* edx, void* state, const ModelRenderInfo_t& info, void* pCustomBoneToWorld);
+	static void __fastcall dPushRenderTargetAndViewport(void* ecx, void* edx, ITexture* pTexture, ITexture* pDepthTexture, int nViewX, int nViewY, int nViewW, int nViewH);
+	static void __fastcall dPopRenderTargetAndViewport(void* ecx, void* edx);
+	static void __fastcall dVGui_Paint(void* ecx, void* edx, int mode);
 	static int __fastcall dIsSplitScreen();
-	static DWORD *__fastcall dPrePushRenderTarget(void *ecx, void *edx, int a2);
-	static ITexture *__fastcall dGetFullScreenTexture();
+	static DWORD* __fastcall dPrePushRenderTarget(void* ecx, void* edx, int a2);
+	static ITexture* __fastcall dGetFullScreenTexture();
 
 	// Fire portals from right controller
 	static bool __fastcall dTraceFirePortal(void* ecx, void* edx, const Vector& vTraceStart, const Vector& vDirection, bool bPortal2, int iPlacedBy, void* tr);
@@ -265,7 +265,7 @@ public:
 	static void dVGui_GetPanelBounds(int slot, int& x, int& y, int& w, int& h);
 
 	static void dVGUI_UpdateScreenSpaceBounds(int nNumSplits, int sx, int sy, int sw, int sh);
-	static void dVGui_GetTrueScreenSize(int &w, int &h);
+	static void dVGui_GetTrueScreenSize(int& w, int& h);
 
 	static void __fastcall dPush2DView(void* ecx, void* edx, IMatRenderContext* pRenderContext, const CViewSetup& view, int nFlags, ITexture* pRenderTarget, void* frustumPlanes);
 	static void __fastcall dRender(void* ecx, void* edx, vrect_t* rect);
