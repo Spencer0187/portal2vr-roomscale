@@ -239,11 +239,32 @@ void __fastcall Hooks::dRenderView(void* ecx, void* edx, CViewSetup& setup, CVie
 
 		// Rudimentary portalling detection
 		if (distance > 35) {
-			//m_VR->m_RotationOffset.x += m_VR->m_PortalRotationOffset.x;
+			// 1. Update the rotation
 			m_VR->m_RotationOffset.y += m_VR->m_PortalRotationOffset.y;
-			//m_VR->m_RotationOffset.z += m_VR->m_PortalRotationOffset.z;
-
+			
+			// 2. Refresh HMD angles
 			m_VR->UpdateHMDAngles();
+
+			// 3. FIX: Re-calculate the "Previous" roomscale position based on the NEW rotation.
+			// This prevents the delta calculation in vr.cpp from thinking the rotation change
+			// is actual physical movement.
+			Vector hmdRaw = m_VR->m_HmdPose.TrackedDevicePos;
+			Vector hmdLocal = hmdRaw - m_VR->m_Center;
+
+			// Manually pivot XY (Same logic as VectorPivotXY in vr.cpp)
+			float ang = m_VR->m_RotationOffset.y;
+			float s, c;
+			SinCos(DEG2RAD(ang), &s, &c);
+			
+			float newX = hmdLocal.x * c - hmdLocal.y * s;
+			float newY = hmdLocal.x * s + hmdLocal.y * c;
+			
+			hmdLocal.x = newX;
+			hmdLocal.y = newY;
+			hmdLocal.z = hmdLocal.z; // Z is unchanged in XY pivot
+
+			// 4. Reset the prev position
+			m_VR->m_PrevRoomScalePos = hmdLocal * m_VR->m_VRScale;
 
 			m_VR->m_ApplyPortalRotationOffset = false;
 		}
@@ -371,32 +392,6 @@ bool __fastcall Hooks::dCreateMove(void* ecx, void* edx, float flInputSampleTime
 			}
 
 		}
-
-		if (m_VR->m_RoomscaleActive) // OLD LOGIC, INPUT BASED ROOMSCALE, DOES NOT WORK WELL, NOT ENABLED
-		{
-			// How much have we moved since last CreateMove?
-			Vector setupOriginToHMD = (m_VR->m_HmdPosRelativeRaw - m_VR->m_HmdPosRelativeRawPrev) * m_VR->m_VRScale; //m_VR->m_HmdPosRelative - m_VR->m_HmdPosRelativePrev;
-			m_VR->m_HmdPosRelativeRawPrev = m_VR->m_HmdPosRelativeRaw;
-
-			setupOriginToHMD.z = 0;
-			float distance = VectorLength(setupOriginToHMD);
-			if (distance > 0)
-			{
-				float forwardSpeed = DotProduct2D(setupOriginToHMD, m_VR->m_HmdForward);
-				float sideSpeed = DotProduct2D(setupOriginToHMD, m_VR->m_HmdRight);
-				cmd->forwardmove += distance * forwardSpeed;
-				cmd->sidemove += distance * sideSpeed;
-
-				// Let's update the position and the previous too
-				/*m_VR->m_HmdPosRelative -= setupOriginToHMD;
-				m_VR->m_HmdPosRelativePrev = m_VR->m_HmdPosRelative;*/
-
-				/*m_VR->m_Center += m_VR->m_HmdPosRelativeRaw - m_VR->m_HmdPosRelativeRawPrev;
-				m_VR->m_HmdPosRelativeRawPrev = m_VR->m_HmdPosRelativeRaw;*/
-
-				//m_VR->ResetPosition();
-			}
-		}
 	}
 
 	return false;
@@ -424,25 +419,46 @@ void __fastcall Hooks::dCalcViewModelView(void* ecx, void* edx, const Vector& ey
 	return hkCalcViewModelView.fOriginal(ecx, vecNewOrigin, vecNewAngles);
 }
 
-float __fastcall Hooks::dProcessUsercmds(void *ecx, void *edx, edict_t *player, void *buf, int numcmds, int totalcmds, int dropped_packets, bool ignore, bool paused)
+float __fastcall Hooks::dProcessUsercmds(void* ecx, void* edx, edict_t* player, void* buf, int numcmds, int totalcmds, int dropped_packets, bool ignore, bool paused)
 {
-	int localIndex = m_Game->m_EngineClient->GetLocalPlayer();
-	int index = EntityIndex(ecx);
-
-	if (m_VR->m_IsVREnabled && localIndex == index) {
-		CBaseEntity* pEnt = (CBaseEntity*)ecx;
-		IHandleEntity* pHandle = (IHandleEntity*)ecx;
-
-		m_VR->ResolveRoomScaleMovement(pEnt, pHandle);
-	}
-
-	Server_BaseEntity *pPlayer = (Server_BaseEntity*)player->m_pUnk->GetBaseEntity();
+    // 1. Run the original engine logic first so the player is in the correct state for this tick
+	Server_BaseEntity* pPlayer = (Server_BaseEntity*)player->m_pUnk->GetBaseEntity();
 
 	int index = EntityIndex(pPlayer);
 	m_Game->m_CurrentUsercmdID = index;
 
+    // 2. Safety Checks
+    if (!m_VR || !m_VR->m_IsVREnabled || !player || !player->m_pUnk)
+        return hkProcessUsercmds.fOriginal(ecx, player, buf, numcmds, totalcmds, dropped_packets, ignore, paused);
+
+    // 3. Get the SERVER-SIDE Entity
+    // "player" is an edict_t*, which is a server-side structure.
+    Server_BaseEntity* pServerBase = (Server_BaseEntity*)player->m_pUnk->GetBaseEntity();
+    
+    if (pServerBase)
+    {
+        // Check if this is the local player (controlled by us)
+        // We compare the edict index to the local player index
+        int entIndex = EntityIndex(pServerBase);
+        int localIndex = m_Game->m_EngineClient->GetLocalPlayer();
+
+        // Note: In singleplayer internal server, indices usually match. 
+        if (entIndex == localIndex)
+        {
+            // Cast to CBaseEntity* (The class structure is usually identical for the offsets we care about)
+            CBaseEntity* pEnt = (CBaseEntity*)pServerBase;
+            
+            // Pass the Server Entity Handle for tracing
+            IHandleEntity* pHandle = (IHandleEntity*)player->m_pUnk;
+            
+            // EXECUTE ROOMSCALE
+            m_VR->ResolveRoomScaleMovement(pEnt, pHandle);
+        }
+    }
+
 	return hkProcessUsercmds.fOriginal(ecx, player, buf, numcmds, totalcmds, dropped_packets, ignore, paused);
 }
+
 
 int Hooks::dWriteUsercmd(bf_write* buf, CUserCmd* to, CUserCmd* from)
 {
