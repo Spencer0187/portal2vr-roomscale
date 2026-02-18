@@ -55,7 +55,6 @@ public:
 
 	// Room-Scale Variables
 	Vector m_PrevRoomScalePos = { 0, 0, 0 }; // The raw HMD X/Y from the previous frame
-	bool m_RoomScaleReset = true;            // Flag to force a reset (e.g. after loading/death)
 
 	// Constants
 	const float m_StepHeight = 18.0f;       // Standard Source Engine step height
@@ -212,6 +211,9 @@ public:
 	float m_HudSize = 4.0;
 	bool m_HudAlwaysVisible = false;
 	int m_AimMode = 2;
+	float m_PortallingDetectionDistanceThreshold = 35.f; // The distance threshold used to detect portalling
+	bool m_ApplyPitchAndRollPortalRotationOffset = false; // If `true`, the camera pitch/roll follows the exit portal's orientation when portalling
+	float m_CameraUprightRecoverySpeed = 0.2f; // If the above is `true`, this controls how quickly the camera turns back upright after portalling
 
 	VR() {};
 	VR(Game* game);
@@ -242,7 +244,7 @@ public:
 	Vector GetViewOrigin(Vector setupOrigin);
 	Vector GetViewOriginLeft(Vector setupOrigin);
 	Vector GetViewOriginRight(Vector setupOrigin);
-	bool PressedDigitalAction(vr::VRActionHandle_t& actionHandle, bool checkIfActionChanged = false);
+	bool CheckDigitalActionChanged(vr::VRActionHandle_t& actionHandle, bool& state);
 	bool GetAnalogActionData(vr::VRActionHandle_t& actionHandle, vr::InputAnalogActionData_t& analogDataOut);
 	void ResetPosition();
 	void GetPoseData(vr::TrackedDevicePose_t& poseRaw, TrackedDevicePoseData& poseOut);
