@@ -634,16 +634,18 @@ void VR::ProcessInput()
 
     if (GetAnalogActionData(m_ActionTurn, analogActionData))
     {
+        float turnAngle = 0.0f;
+
         if (m_SnapTurning)
         {
             if (!m_PressedTurn && analogActionData.x > 0.5)
             {
-                m_RotationOffset.y -= m_SnapTurnAngle;
+                turnAngle = -m_SnapTurnAngle;
                 m_PressedTurn = true;
             }
             else if (!m_PressedTurn && analogActionData.x < -0.5)
             {
-                m_RotationOffset.y += m_SnapTurnAngle;
+                turnAngle = m_SnapTurnAngle;
                 m_PressedTurn = true;
             }
             else if (analogActionData.x < 0.3 && analogActionData.x > -0.3)
@@ -657,12 +659,31 @@ void VR::ProcessInput()
             float xNormalized = (abs(analogActionData.x) - deadzone) / (1 - deadzone);
             if (analogActionData.x > deadzone)
             {
-                m_RotationOffset.y -= m_TurnSpeed * deltaTime * xNormalized;
+                turnAngle = -m_TurnSpeed * deltaTime * xNormalized;
             }
             if (analogActionData.x < -deadzone)
             {
-                m_RotationOffset.y += m_TurnSpeed * deltaTime * xNormalized;
+                turnAngle = m_TurnSpeed * deltaTime * xNormalized;
             }
+        }
+
+        // If a turn occurred, apply the Pivot Logic
+        if (turnAngle != 0.0f)
+        {
+            // 1. Apply the rotation
+            m_RotationOffset.y += turnAngle;
+
+            // 2. Pivot the Playspace Center around the HMD
+            // We calculate where the HMD is relative to the current center
+            Vector relativePos = m_HmdPose.TrackedDevicePos - m_Center;
+
+            // We rotate that vector by the NEGATIVE turn angle (counter-rotation)
+            // This relies on VectorPivotXY helper which is used elsewhere in your vr.cpp
+            VectorPivotXY(relativePos, { 0, 0, 0 }, -turnAngle);
+
+            // We move the center so that the HMD ends up in the exact same position
+            // relative to the NEW rotation as it was to the OLD rotation.
+            m_Center = m_HmdPose.TrackedDevicePos - relativePos;
         }
 
         // Wrap from 0 to 360
@@ -735,7 +756,6 @@ void VR::ProcessInput()
     if (PressedDigitalAction(m_ActionResetPosition, true))
     {
         ResetPosition();
-        m_RoomScaleReset = true;
     }
 
     if (PressedDigitalAction(m_ActionFlashlight, true))
@@ -906,7 +926,7 @@ Vector VR::GetRightControllerAbsPos(Vector eyePosition)
     Vector position = offset + m_RightControllerPosRel;
 
     if (m_6DOF)
-        position += m_HmdPosRelative;
+        position.z += m_HmdPosRelative.z;
 
     return position;
 }
@@ -950,7 +970,7 @@ void VR::UpdateHMDAngles() {
 
 void VR::ResetPosition()
 {
-    m_Center = m_HmdPose.TrackedDevicePos;
+    m_Center.z = m_HmdPose.TrackedDevicePos.z;
 }
 
 void VR::UpdateTracking()
@@ -1123,7 +1143,7 @@ Vector VR::GetViewOrigin(Vector setupOrigin)
     Vector center = setupOrigin;
 
     if (m_6DOF)
-        center += m_HmdPosRelative;
+        center.z += m_HmdPosRelative.z;
 
     return center + (m_HmdForward * -(m_EyeZ * m_VRScale));
 }
@@ -1499,63 +1519,254 @@ static T parseConfigEntry(
     }
 
 
+// Standard Source Engine ClipVelocity
+void ClipVelocity(const Vector& in, const Vector& normal, Vector& out, float overbounce)
+{
+    float backoff = DotProduct(in, normal) * overbounce;
+    for (int i = 0; i < 3; i++)
+    {
+        float change = normal[i] * backoff;
+        out[i] = in[i] - change;
+    }
+    
+    // Fix floating point errors
+    float adjust = DotProduct(out, normal);
+    if (adjust < 0.0f)
+    {
+        out -= (normal * adjust);
+    }
+}
+
+vec_t Vector::NormalizeInPlace()
+{
+    vec_t iradius = 1.0f / (this->Length() + 1e-6f);   // avoid div-by-zero
+    (*this).x *= iradius;
+    (*this).y *= iradius;
+    (*this).z *= iradius;
+    return iradius;   // some code expects the 1/length return value
+}
+
+Vector Vector::Cross(const Vector& vOther) const
+{
+    Vector res;
+    res.x = y * vOther.z - z * vOther.y;
+    res.y = z * vOther.x - x * vOther.z;
+    res.z = x * vOther.y - y * vOther.x;
+    return res;
+}
+
+Vector Vector::Normalized() const
+{
+    Vector norm = *this;  // Copy
+    norm.NormalizeInPlace();  // Assume you already have NormalizeInPlace() from before
+    return norm;
+}
+
 Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector vecDelta, Vector vecMins, Vector vecMaxs)
 {
     CGameTrace trace;
     Ray_t ray;
     CTraceFilterSkipNPCsAndPlayers traceFilter(pPassEntity, 0);
 
-    Vector vecEnd = vecStart + vecDelta;
-
-    // 1. Try moving directly along the floor
-    ray.Init(vecStart, vecEnd, vecMins, vecMaxs);
+    // Check for startsolid and depenetrate if necessary
+    ray.Init(vecStart, vecStart, vecMins, vecMaxs);
     m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
 
-    if (trace.fraction == 1.0f)
+    Vector pos = vecStart;
+    if (trace.startsolid || trace.allsolid)
     {
-        return trace.endpos; // Path is clear
+        // Simple depenetration: probe in 6 directions to find closest exit plane
+        const float probeDist = 4.0f;  // Increased for midair/deep penetration
+        Vector directions[6] = {
+            Vector(1, 0, 0), Vector(-1, 0, 0),
+            Vector(0, 1, 0), Vector(0, -1, 0),
+            Vector(0, 0, 1), Vector(0, 0, -1)
+        };
+
+        float max_fraction = 0.0f;  // Want farthest probe (deepest penetration direction)
+        Vector best_normal = Vector(0, 0, 0);
+        Vector best_endpos = vecStart;
+
+        for (int i = 0; i < 6; ++i)
+        {
+            Vector probeEnd = vecStart + directions[i] * probeDist;
+            ray.Init(vecStart, probeEnd, vecMins, vecMaxs);
+            m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
+
+            if (trace.fraction > max_fraction && !trace.startsolid)
+            {
+                max_fraction = trace.fraction;
+                best_normal = trace.plane.normal;
+                best_endpos = trace.endpos;
+            }
+        }
+
+        if (max_fraction > 0.0f)
+        {
+            pos = best_endpos;
+            // Clip delta away from this normal
+            float into = DotProduct(vecDelta, best_normal);
+            if (into < 0.0f)
+            {
+                Vector clippedDelta;
+                ClipVelocity(vecDelta, best_normal, clippedDelta, 1.0f);
+                vecDelta = clippedDelta;
+            }
+        }
+        // If no exit found, stay put (rare)
     }
 
-    // 2. We hit something. Try stepping up (standard 18 units).
-    float stepHeight = 18.0f;
-    Vector vecUp = vecStart;
-    vecUp.z += stepHeight;
+    // Now perform the slide move
+    Vector original_velocity = vecDelta;
+    Vector velocity = vecDelta;
+    float time_left = 1.0f;
+    const int maxBumps = 4;
+    const float stepHeight = 18.0f;
+    const float overbounce = 1.01f;  // Slight overbounce to prevent exact zeroing
 
-    // Trace UP
-    ray.Init(vecStart, vecUp, vecMins, vecMaxs);
-    m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-    
-    // If we hit the ceiling immediately, we can't step up
-    if (trace.allsolid || trace.startsolid) 
-        return vecStart + (vecDelta * trace.fraction); 
-    
-    Vector vecStepStart = trace.endpos; 
+    Vector planes[5];
+    int numplanes = 0;
 
-    // Trace OVER (at step height)
-    Vector vecStepEnd = vecStepStart + vecDelta;
-    ray.Init(vecStepStart, vecStepEnd, vecMins, vecMaxs);
-    m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-    Vector vecStepTarget = trace.endpos;
-
-    // Trace DOWN (to find the floor)
-    Vector vecDown = vecStepTarget;
-    vecDown.z -= stepHeight;
-    
-    ray.Init(vecStepTarget, vecDown, vecMins, vecMaxs);
-    m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-
-    // If we landed on something valid (fraction < 1.0) and it's relatively flat (normal z > 0.7)
-    if (trace.fraction < 1.0f && trace.plane.normal.z > 0.7f)
+    for (int bump = 0; bump < maxBumps; ++bump)
     {
-        return trace.endpos; // Successfully stepped up
+        if (time_left <= 0.001f || velocity.LengthSqr() < 0.001f)
+            break;
+
+        Vector end = pos + (velocity * time_left);
+
+        ray.Init(pos, end, vecMins, vecMaxs);
+        m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
+
+        if (trace.allsolid)
+        {
+            velocity = Vector(0, 0, 0);
+            break;
+        }
+
+        if (trace.fraction > 0.0f)
+        {
+            pos = trace.endpos;
+            time_left -= time_left * trace.fraction;
+            numplanes = 0;  // Reset planes after successful partial move
+            if (time_left <= 0.001f)
+                break;
+        }
+
+        if (trace.fraction == 1.0f)
+            break;
+
+        // Hit something - add plane
+        planes[numplanes] = trace.plane.normal;
+        ++numplanes;
+
+        // Clip velocity against all accumulated planes
+        bool clipped_to_zero = false;
+        for (int i = 0; i < numplanes; ++i)
+        {
+            Vector velOut;
+            ClipVelocity(velocity, planes[i], velOut, overbounce);
+            velocity = velOut;
+
+            // Check if still okay with other planes
+            bool illegal = false;
+            for (int j = 0; j < numplanes; ++j)
+            {
+                if (j != i)
+                {
+                    if (DotProduct(velocity, planes[j]) < 0.0f)
+                    {
+                        illegal = true;
+                        break;
+                    }
+                }
+            }
+
+            if (illegal)
+            {
+                // Try to resolve corner
+                if (numplanes == 2)
+                {
+                    // Use bisector for smoother corner sliding
+                    Vector bisector = (planes[0] + planes[1]).Normalized();
+                    float proj = DotProduct(velocity, bisector);
+                    if (proj > 0.0f)
+                    {
+                        velocity = bisector * proj;
+                    }
+                    else
+                    {
+                        // If proj negative, project along cross instead
+                        Vector dir = planes[0].Cross(planes[1]);
+                        dir.NormalizeInPlace();
+                        float proj = DotProduct(dir, original_velocity);
+                        velocity = dir * proj;
+                    }
+                }
+                else
+                {
+                    // Too many planes - stop
+                    velocity = Vector(0, 0, 0);
+                    clipped_to_zero = true;
+                    break;
+                }
+            }
+        }
+
+        if (clipped_to_zero || velocity.LengthSqr() < 0.001f)
+            break;
+
+        // Attempt step if blocked by floor-ish plane (or any upward block midair)
+        if (numplanes > 0 && planes[0].z > 0.0f)  // Loosened to >0 for midair "climb" on slants
+        {
+            Vector step_pos = pos;
+            Vector step_end = pos;
+            step_end.z += stepHeight;
+
+            ray.Init(pos, step_end, vecMins, vecMaxs);
+            m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
+
+            if (!trace.allsolid && !trace.startsolid)
+            {
+                step_pos = trace.endpos;
+
+                step_end = step_pos + (original_velocity * (1.0f - trace.fraction));
+                ray.Init(step_pos, step_end, vecMins, vecMaxs);
+                m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
+
+                step_pos = trace.endpos;
+
+                step_end = step_pos;
+                step_end.z -= stepHeight;
+                ray.Init(step_pos, step_end, vecMins, vecMaxs);
+                m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
+
+                bool step_success = (trace.fraction < 1.0f && trace.plane.normal.z > 0.7f) ||
+                                    (trace.fraction == 1.0f && !trace.allsolid && !trace.startsolid);
+
+                if (step_success)
+                {
+                    pos = trace.endpos;
+                    numplanes = 0;  // Reset after step
+                }
+            }
+        }
     }
 
-    // If step failed, just slide along the wall using the original trace result
-    ray.Init(vecStart, vecEnd, vecMins, vecMaxs);
+    // Final nudge if still penetrating (midair safety)
+    ray.Init(pos, pos, vecMins, vecMaxs);
     m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-    
-    return trace.endpos;
+    if (trace.startsolid || trace.allsolid)
+    {
+        // Nudge along the normal a tiny bit
+        if (trace.plane.normal.LengthSqr() > 0.001f)
+        {
+            pos += trace.plane.normal * 0.1f;  // Small nudge out
+        }
+    }
+
+    return pos;
 }
+
 
 void VR::ResolveRoomScaleMovement(CBaseEntity* pPlayer, IHandleEntity* pTraceEntity)
 {
@@ -1579,7 +1790,8 @@ void VR::ResolveRoomScaleMovement(CBaseEntity* pPlayer, IHandleEntity* pTraceEnt
 
     // 3. Calculate Delta
     Vector vecDelta = hmdGameSpace - m_PrevRoomScalePos;
-    vecDelta = vecDelta * 2;
+    vecDelta.z = 0.0f;
+    // vecDelta = vecDelta * 2;
 
     // Filter noise
     // if (vecDelta.Length() < 0.1f) return; 
@@ -1597,30 +1809,45 @@ void VR::ResolveRoomScaleMovement(CBaseEntity* pPlayer, IHandleEntity* pTraceEnt
     {
         // A. Memory Write (Server Authority)
         uintptr_t serverBase = m_Game->m_BaseServer;
+        uintptr_t clientBase = m_Game->m_BaseClient;
         if (serverBase != 0)
         {
-            uintptr_t staticPtrLoc = serverBase + 0x007C36FC;
-            if (!IsBadReadPtr((void*)staticPtrLoc, sizeof(uintptr_t)))
+            uintptr_t staticSvrPtrLoc = serverBase + 0x007C36FC;
+            uintptr_t staticCliPtrLoc = clientBase + 0x0099B820;
+            if (!IsBadReadPtr((void*)staticSvrPtrLoc, sizeof(uintptr_t)) && !IsBadReadPtr((void*)staticCliPtrLoc, sizeof(uintptr_t)))
             {
-                uintptr_t entityBase = *(uintptr_t*)staticPtrLoc;
-                if (entityBase != 0)
+                uintptr_t entitySvrBase = *(uintptr_t*)staticSvrPtrLoc;
+                uintptr_t entityCliBase = *(uintptr_t*)staticCliPtrLoc;
+                if (entitySvrBase != 0 && entityCliBase != 0)
                 {
-                    float* pX = (float*)(entityBase + 0x2BC);
-                    float* pY = (float*)(entityBase + 0x2C0);
-                    float* pZ = (float*)(entityBase + 0x2C4);
+                    float* pSX = (float*)(entitySvrBase + 0x2BC);
+                    float* pSY = (float*)(entitySvrBase + 0x2C0);
+                    float* pSZ = (float*)(entitySvrBase + 0x2C4);
 
-                    if (!IsBadWritePtr(pX, sizeof(float) * 3))
+                    float* pCX = (float*)(entityCliBase + 0x12C);
+                    float* pCY = (float*)(entityCliBase + 0x130);
+                    float* pCZ = (float*)(entityCliBase + 0x134);
+
+                    if (!IsBadWritePtr(pSX, sizeof(float) * 3))
                     {
-                        *pX = vecFinal.x;
-                        *pY = vecFinal.y;
-                        *pZ = vecFinal.z;
+                        if (vecFinal.x != 0.0f && vecFinal.y != 0.0f && vecFinal.z != 0.0f) {
+                            *pSX = vecFinal.x;
+                            *pSY = vecFinal.y;
+                            *pSZ = vecFinal.z;
+
+                            *pCX = vecFinal.x;
+                            *pCY = vecFinal.y;
+                            *pCZ = vecFinal.z;
+                        }
+                        else {
+                            std::cout << "wtf that aint right\n";
+                        }
                     }
                 }
             }
         }
         
-        // B. Update Cache (Server Entity)
-        pPlayer->m_vecAbsOrigin = vecFinal;
+        // pPlayer->m_vecAbsOrigin = vecFinal; // Doesn't work
 
         // C. Counter-Steer (Fixes Double Movement)
         // Vector moveRaw = actualMove / m_VRScale;
