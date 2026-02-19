@@ -1587,32 +1587,27 @@ Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector v
     CGameTrace trace;
     Ray_t ray;
     CTraceFilterSkipNPCsAndPlayers traceFilter(pPassEntity, 0);
-
     // Check for startsolid and depenetrate if necessary
     ray.Init(vecStart, vecStart, vecMins, vecMaxs);
     m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-
     Vector pos = vecStart;
     if (trace.startsolid || trace.allsolid)
     {
         // Simple depenetration: probe in 6 directions to find closest exit plane
-        const float probeDist = 4.0f;  // Increased for midair/deep penetration
+        const float probeDist = 4.0f; // Increased for midair/deep penetration
         Vector directions[6] = {
             Vector(1, 0, 0), Vector(-1, 0, 0),
             Vector(0, 1, 0), Vector(0, -1, 0),
             Vector(0, 0, 1), Vector(0, 0, -1)
         };
-
-        float max_fraction = 0.0f;  // Want farthest probe (deepest penetration direction)
+        float max_fraction = 0.0f; // Want farthest probe (deepest penetration direction)
         Vector best_normal = Vector(0, 0, 0);
         Vector best_endpos = vecStart;
-
         for (int i = 0; i < 6; ++i)
         {
             Vector probeEnd = vecStart + directions[i] * probeDist;
             ray.Init(vecStart, probeEnd, vecMins, vecMaxs);
             m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-
             if (trace.fraction > max_fraction && !trace.startsolid)
             {
                 max_fraction = trace.fraction;
@@ -1620,7 +1615,6 @@ Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector v
                 best_endpos = trace.endpos;
             }
         }
-
         if (max_fraction > 0.0f)
         {
             pos = best_endpos;
@@ -1635,143 +1629,138 @@ Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector v
         }
         // If no exit found, stay put (rare)
     }
-
     // Now perform the slide move
     Vector original_velocity = vecDelta;
     Vector velocity = vecDelta;
     float time_left = 1.0f;
     const int maxBumps = 4;
     const float stepHeight = 18.0f;
-    const float overbounce = 1.00f;  // Slight overbounce to prevent exact zeroing
-
+    const float overbounce = 1.00f; // Slight overbounce to prevent exact zeroing
     Vector planes[5];
     int numplanes = 0;
-
     for (int bump = 0; bump < maxBumps; ++bump)
     {
         if (time_left <= 0.001f)
             break;
-
         Vector end = pos + (velocity * time_left);
-
         ray.Init(pos, end, vecMins, vecMaxs);
         m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-
         if (trace.allsolid)
         {
             velocity = Vector(0, 0, 0);
             break;
         }
-
         if (trace.fraction > 0.0f)
         {
             pos = trace.endpos;
             time_left -= time_left * trace.fraction;
-            numplanes = 0;  // Reset planes after successful partial move
+            numplanes = 0; // Reset planes after successful partial move
             if (time_left <= 0.001f)
                 break;
         }
-
         if (trace.fraction == 1.0f)
             break;
-
         // Hit something - add plane
         planes[numplanes] = trace.plane.normal;
         ++numplanes;
-
-        // Clip velocity against all accumulated planes
-        bool clipped_to_zero = false;
-        for (int i = 0; i < numplanes; ++i)
+        // Attempt step if blocked by steep-ish plane (walls/ledges, not floors or ceilings)
+        bool attempted_step = false;
+        if (numplanes > 0 && planes[numplanes - 1].z < 0.7f && planes[numplanes - 1].z > -0.7f)
         {
-            Vector velOut;
-            ClipVelocity(velocity, planes[i], velOut, overbounce);
-            velocity = velOut;
-
-            // Check if still okay with other planes
-            bool illegal = false;
-            for (int j = 0; j < numplanes; ++j)
+            attempted_step = true;
+            Vector step_pos = pos;
+            Vector step_end = pos;
+            step_end.z += stepHeight;
+            ray.Init(pos, step_end, vecMins, vecMaxs);
+            m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace); // up_trace
+            bool up_allsolid = trace.allsolid;
+            bool up_startsolid = trace.startsolid;
+            Vector up_endpos = trace.endpos;
+            if (!up_allsolid && !up_startsolid)
             {
-                if (j != i)
+                step_pos = up_endpos;
+                step_end = step_pos + (velocity * time_left);
+                ray.Init(step_pos, step_end, vecMins, vecMaxs);
+                m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace); // forward_trace
+                float forward_fraction = trace.fraction;
+                Vector forward_endpos = trace.endpos;
+                step_pos = forward_endpos;
+                step_end = step_pos;
+                step_end.z -= stepHeight;
+                ray.Init(step_pos, step_end, vecMins, vecMaxs);
+                m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace); // down_trace
+                float down_fraction = trace.fraction;
+                Vector down_plane_normal = trace.plane.normal;
+                bool down_allsolid = trace.allsolid;
+                bool down_startsolid = trace.startsolid;
+                Vector down_endpos = trace.endpos;
+                bool step_success = (down_fraction < 1.0f && down_plane_normal.z > 0.7f) ||
+                                    (down_fraction == 1.0f && !down_allsolid && !down_startsolid);
+                if (step_success)
                 {
-                    if (DotProduct(velocity, planes[j]) < 0.0f)
+                    pos = down_endpos;
+                    time_left *= (1.0f - forward_fraction);
+                    numplanes = 0; // Reset after step
+                }
+            }
+        }
+        // If step not attempted or failed, clip velocity
+        if (!attempted_step || time_left > 0.001f) // If step succeeded fully, time_left=0, skip clip
+        {
+            // Clip velocity against all accumulated planes
+            bool clipped_to_zero = false;
+            for (int i = 0; i < numplanes; ++i)
+            {
+                Vector velOut;
+                ClipVelocity(velocity, planes[i], velOut, overbounce);
+                velocity = velOut;
+                // Check if still okay with other planes
+                bool illegal = false;
+                for (int j = 0; j < numplanes; ++j)
+                {
+                    if (j != i)
                     {
-                        illegal = true;
+                        if (DotProduct(velocity, planes[j]) < 0.0f)
+                        {
+                            illegal = true;
+                            break;
+                        }
+                    }
+                }
+                if (illegal)
+                {
+                    // Try to resolve corner
+                    if (numplanes == 2)
+                    {
+                        // Use bisector for smoother corner sliding
+                        Vector bisector = (planes[0] + planes[1]).Normalized();
+                        float proj = DotProduct(velocity, bisector);
+                        if (proj > 0.0f)
+                        {
+                            velocity = bisector * proj;
+                        }
+                        else
+                        {
+                            // If proj negative, project along cross instead
+                            Vector dir = planes[0].Cross(planes[1]);
+                            dir.NormalizeInPlace();
+                            float proj = DotProduct(dir, original_velocity);
+                            velocity = dir * proj;
+                        }
+                    }
+                    else
+                    {
+                        // Too many planes - stop
+                        velocity = Vector(0, 0, 0);
+                        clipped_to_zero = true;
                         break;
                     }
                 }
             }
-
-            if (illegal)
-            {
-                // Try to resolve corner
-                if (numplanes == 2)
-                {
-                    // Use bisector for smoother corner sliding
-                    Vector bisector = (planes[0] + planes[1]).Normalized();
-                    float proj = DotProduct(velocity, bisector);
-                    if (proj > 0.0f)
-                    {
-                        velocity = bisector * proj;
-                    }
-                    else
-                    {
-                        // If proj negative, project along cross instead
-                        Vector dir = planes[0].Cross(planes[1]);
-                        dir.NormalizeInPlace();
-                        float proj = DotProduct(dir, original_velocity);
-                        velocity = dir * proj;
-                    }
-                }
-                else
-                {
-                    // Too many planes - stop
-                    velocity = Vector(0, 0, 0);
-                    clipped_to_zero = true;
-                    break;
-                }
-            }
-        }
-
-        if (clipped_to_zero)
-            break;
-
-        // Attempt step if blocked by floor-ish plane (or any upward block midair)
-        if (numplanes > 0 && planes[0].z > 0.0f)  // Loosened to >0 for midair "climb" on slants
-        {
-            Vector step_pos = pos;
-            Vector step_end = pos;
-            step_end.z += stepHeight;
-
-            ray.Init(pos, step_end, vecMins, vecMaxs);
-            m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-
-            if (!trace.allsolid && !trace.startsolid)
-            {
-                step_pos = trace.endpos;
-
-                step_end = step_pos + (original_velocity * (1.0f - trace.fraction));
-                ray.Init(step_pos, step_end, vecMins, vecMaxs);
-                m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-
-                step_pos = trace.endpos;
-
-                step_end = step_pos;
-                step_end.z -= stepHeight;
-                ray.Init(step_pos, step_end, vecMins, vecMaxs);
-                m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
-
-                bool step_success = (trace.fraction < 1.0f && trace.plane.normal.z > 0.7f) ||
-                                    (trace.fraction == 1.0f && !trace.allsolid && !trace.startsolid);
-
-                if (step_success)
-                {
-                    pos = trace.endpos;
-                    numplanes = 0;  // Reset after step
-                }
-            }
+            if (clipped_to_zero)
+                break;
         }
     }
-
     // Final nudge if still penetrating (midair safety)
     ray.Init(pos, pos, vecMins, vecMaxs);
     m_Game->m_EngineTrace->TraceRay(ray, MASK_PLAYERSOLID, &traceFilter, &trace);
@@ -1780,10 +1769,9 @@ Vector VR::ComputeSafeMove(IHandleEntity* pPassEntity, Vector vecStart, Vector v
         // Nudge along the normal a tiny bit
         if (trace.plane.normal.LengthSqr() > 0.001f)
         {
-            pos += trace.plane.normal * 0.1f;  // Small nudge out
+            pos += trace.plane.normal * 0.1f; // Small nudge out
         }
     }
-
     return pos;
 }
 
