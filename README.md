@@ -8,7 +8,7 @@
 # My apolocheese for the formatting changes clogging the diffs (blame visual studio) and the AI garbage code
 
 ## Current Issues:
-You cannot walk through Portals in Roomscale. The game treats them as walls.
+You cannot walk through Portals in Roomscale. The game treats them as walls. You can still move through portals with controller movement.
 
 # ![Portal 2 icon](imgs/icon.jpg "Portal 2 icon") Portal 2 VR
 ### ~~Use this mod at your own risk of getting VAC banned. Use the -insecure launch option to help protect yourself.~~
