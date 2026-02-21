@@ -21,13 +21,13 @@ This game contains flashing lights and fast motion sequences.
 ## Things that work
 * Singleplayer
 * 6DoF VR view
+* Roomscale movement
 * Motion controls for portal gun and grabbable objects
 * Workshop content
 
 ## Things that need fixing
 * Use the game's own haptic feedback
 * In-game UI and pause menu are broken
-* 6DoF and Roomscale needs to be reimplemented
 * CPU is underutilized
 
 ## How to use
